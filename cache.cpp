@@ -9,6 +9,7 @@ static const uint CACHE_SIZE = 256;//32768;  // 32KB = 0x8000
 static const uint SET_SIZE = CACHE_SIZE/BLOCK_SIZE;
 static const uint SET_PER_WAY = SET_SIZE/WAY_SIZE;
 
+sc_trace_file *wf = sc_create_vcd_trace_file("wf_cache");
 
 SC_MODULE(CACHE){
 public:
@@ -45,6 +46,7 @@ public:
   uint lru_way;
   uint miss_line_replace;
   status cache_status;
+  function f;
 
   SC_CTOR(CACHE){
     SC_THREAD(execute);
@@ -62,7 +64,7 @@ private:
   void execute(){
     while(true){
       wait(port_func.value_changed_event());
-      function f = port_func.read();
+      f = port_func.read();
       uint addr = port_addr.read();
       int data = 0;
   //  cout<< sc_time_stamp() << " @ cache func  " << f << "  addr " << addr << "  ret " << port_done.read() << "  status  " << cache_status<<endl;
@@ -85,9 +87,9 @@ private:
       }
       //simulate cache read/write delay
       if(cache_status == status_hit)
-        wait(1000000);         // CHANGE SIMULATION TIMES
+        wait(10000);         // CHANGE SIMULATION TIMES
       else
-        wait(1000000);
+        wait(10000);
 
       if (f == func_read) {
         if(cache_status == status_hit){
@@ -180,7 +182,7 @@ int sc_main(int argc, char* argv[]){
     sc_buffer<CACHE::function>   sigmemfunc;
     sc_buffer<CACHE::retcode>    sigmemdone;
     sc_signal<uint>              sigmemaddr;
-    sc_signal_rv<32>           sigmemdata;
+    sc_signal_rv<32>             sigmemdata;
     sc_clock clk;
     cache.port_func(sigmemfunc);
     cache.port_addr(sigmemaddr);
@@ -194,6 +196,13 @@ int sc_main(int argc, char* argv[]){
 
     cache.port_clk(clk);
     cpu.port_clk(clk);
+    sc_trace(wf, cache.set_number, "set_number");
+    sc_trace(wf, cache.cache_status, "Hit/Miss");
+    sc_trace(wf, cache.hit_way, "hit_way");
+    sc_trace(wf, cache.lru_way, "lru_way");
+    sc_trace(wf, cache.f, "Rd/Wr");
+    sc_trace(wf, cache.port_addr, "Address");
+    //sc_trace(wf, clk, "clock");
 
     cout<<"running mem simulation, ctrl+c to exit"<<endl;
     //Start simulation
