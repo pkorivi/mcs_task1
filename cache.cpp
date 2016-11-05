@@ -25,10 +25,12 @@ public:
     status_hit
   };
   struct cache_block{
-    int data;//[BLOCK_SIZE];
+    int data;    //[BLOCK_SIZE];
     uint tag;
     bool valid;
+    sc_core::sc_time time_stamp;
   };
+  sc_uint<WAY_SIZE> way[SET_PER_WAY];
   sc_in<bool>     port_clk;
   sc_in<function> port_func;
   sc_in<uint>     port_addr;
@@ -40,6 +42,7 @@ public:
   uint addr_tag;
   uint hit_line;
   uint hit_way;
+  uint lru_way;
   uint miss_line_replace;
   status cache_status;
 
@@ -72,7 +75,7 @@ private:
       set_number = (addr>>5)&0x000003;   // CHANGE ADDRESSES
       addr_tag = addr >> 7;
       cache_status = status_miss;
-      hit_way = 0;
+      hit_way = 0xFF;
       for (size_t i = 0; i < WAY_SIZE; i++) {
         if(addr_tag == cache_val[i][set_number].tag){
           cache_status = status_hit;
@@ -89,11 +92,19 @@ private:
       if (f == func_read) {
         if(cache_status == status_hit){
           port_data.write(cache_val[hit_way][set_number].data);
+          cache_val[hit_way][set_number].time_stamp = sc_time_stamp();
         }
         else{
-          cache_val[0][set_number].data = 0xffffffff;
-          cache_val[0][set_number].tag = addr_tag;
-          port_data.write(cache_val[0][set_number].data);
+          lru_way = 0;
+          for (size_t i = 1; i < WAY_SIZE; i++) {
+              if(cache_val[i][set_number].time_stamp < cache_val[i-1][set_number].time_stamp){
+                lru_way = i;
+              }
+          }
+          cache_val[lru_way][set_number].data = 0xffffffff;
+          cache_val[lru_way][set_number].tag = addr_tag;
+          port_data.write(cache_val[lru_way][set_number].data);
+          cache_val[lru_way][set_number].time_stamp = sc_time_stamp();
         }
         port_done.write(ret_read_done);
         wait();
@@ -102,18 +113,28 @@ private:
       else{
         if(cache_status == status_hit){
           cache_val[hit_way][set_number].data = data;
+          cache_val[hit_way][set_number].time_stamp = sc_time_stamp();
         }
         else{
-          cache_val[0][set_number].tag = addr_tag;
-          cache_val[0][set_number].data = data;
+          lru_way = 0;
+          for (size_t i = 1; i < WAY_SIZE; i++) {
+              if(cache_val[i][set_number].time_stamp < cache_val[i-1][set_number].time_stamp){
+                lru_way = i;
+              }
+          }
+          cache_val[lru_way][set_number].tag = addr_tag;
+          cache_val[lru_way][set_number].data = data;
+          cache_val[lru_way][set_number].time_stamp = sc_time_stamp();
         }
         port_done.write(ret_write_done);
       }
-      cout<< "tag  " << addr_tag << "  set  "<< set_number <<"  hit way " << hit_way <<endl;
+      cout<< "tag  " << addr_tag << "  set  "<< set_number <<"  hit way " << hit_way <<"  LRU_WAY " << lru_way << endl;
       cout<< sc_time_stamp() << " æ cache func  " << f << "  addr " << hex << addr << "  ret " << port_done.read()<< "  status  " << cache_status<<endl;
     }
   }
 };
+
+
 SC_MODULE(CPU){
 public:
   sc_in<bool>               port_clk;
